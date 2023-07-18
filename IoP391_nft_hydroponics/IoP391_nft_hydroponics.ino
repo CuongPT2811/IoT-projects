@@ -44,7 +44,6 @@ int TDSmin,TDSmax;
 //Relay
 const int RELAY_ph2 = 19;  
 const int RELAY_h2o = 18;
-// const int RELAY_dd2 = 5;
 const int RELAY_dd1 = 17;
 const int RELAY_ph1 = 16;
 
@@ -62,8 +61,17 @@ void setup() {
   digitalWrite(RELAY_dd1, LOW);
   digitalWrite(RELAY_ph1, LOW);
 
-  //TDS
+  //TDS sensor
+  tds.begin();
   pinMode(TdsSensorPin, INPUT);
+
+  //DS18B20 temperature sensor
+  sensors.begin();
+
+  //pH sensor 
+  EEPROM.begin(32);//needed to permit storage of calibration value in eeprom
+	ph.begin();
+
   // Initialize serial communication
   Serial.begin(115200);
   // Connect to Wi-Fi
@@ -76,12 +84,6 @@ void setup() {
 
   // Initialize Blynk
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, password);
-  //TDS sensor
-  tds.begin();
-  //DS18B20 temperature sensor
-  sensors.begin();
-  EEPROM.begin(32);//needed to permit storage of calibration value in eeprom
-	ph.begin();
 
   timer.setInterval(1000L, sendTDS);
   timer.setInterval(1000L, sendDS18);
@@ -96,35 +98,37 @@ int copyIndex = 0;
 int count = 1;
 float averageVoltage = 0;
 float tdsValue = 0;
-// float temperature = 25;  // current temperature for compensation
+
+
 BLYNK_WRITE(V2)
 {
-  double pHminb = param.asDouble(); // assigning incoming value from pin V1 to a variable
+  double pHminb = param.asDouble(); // assigning incoming value from pin V2 to a variable
   Serial.print("V2 Slider value is: ");
   Serial.println(pHminb);
   pHmin = pHminb;
 }
 BLYNK_WRITE(V3)
 {
-  double pHmaxb = param.asDouble(); // assigning incoming value from pin V1 to a variable
+  double pHmaxb = param.asDouble(); // assigning incoming value from pin V3  to a variable
   Serial.print("V3 Slider value is: ");
   Serial.println(pHmaxb);
   pHmax = pHmaxb;
 }
 BLYNK_WRITE(V5)
 {
-  int TDSminb = param.asInt(); // assigning incoming value from pin V1 to a variable
+  int TDSminb = param.asInt(); // assigning incoming value from pin V5 to a variable
   Serial.print("V5 Slider value is: ");
   Serial.println(TDSminb);
   TDSmin = TDSminb;
 }
 BLYNK_WRITE(V6)
 {
-  int TDSmaxb = param.asInt(); // assigning incoming value from pin V1 to a variable
+  int TDSmaxb = param.asInt(); // assigning incoming value from pin V6 to a variable
   Serial.print("V6 Slider value is: ");
   Serial.println(TDSmaxb);
   TDSmax = TDSmaxb;
 }
+
 //TDS
 // median filtering algorithm
 int getMedianNum(int bArray[], int iFilterLen) {
@@ -162,7 +166,6 @@ void sendDS18() {
 void sendTDS() {
   // Read TDS sensor value
   static unsigned long analogSampleTimepoint = millis();
-  // int temp=25;
   if (millis() - analogSampleTimepoint > 40U)  //every 40 milliseconds,read the analog value from the ADC
   {
     analogSampleTimepoint = millis();
@@ -193,7 +196,6 @@ void sendpH() {
 	if (millis() - timepoint > 1000U) //time interval: 1s
 	{
 		timepoint = millis();
-		//voltage = rawPinValue / esp32ADC * esp32Vin
 		voltage = analogRead(PH_PIN) / ESPADC * ESPVOLTAGE; // read the voltage
 		pHValue = ph.readPH(voltage, tempC); // convert voltage to pH with temperature compensation
 		Serial.print("pH:");
@@ -280,6 +282,3 @@ void loop() {
     }
   count ++;
 }
-
-
-
