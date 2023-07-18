@@ -1,5 +1,5 @@
 #define BLYNK_TEMPLATE_ID "TMPL6pgAKvDxM"
-#define BLYNK_TEMPLATE_NAME "test"
+#define BLYNK_TEMPLATE_NAME "Group 4 project"
 #define BLYNK_AUTH_TOKEN "VyIK9cPsMwVGqr1wH9zMMhfF3zT1epnb"
 #define BLYNK_PRINT Serial
 #include <Wire.h>
@@ -34,15 +34,15 @@ BlynkTimer timer;
 #include "EEPROM.h"
 
 DFRobot_ESP_PH ph;
-#define ESPADC 4096.0    //the esp Analog Digital Convertion value
-#define ESPVOLTAGE 3300  //the esp voltage supply value
-#define PH_PIN 35        //the e#define samplingInterval 20
+#define ESPADC 4096.0   //the esp Analog Digital Convertion value
+#define ESPVOLTAGE 3300 //the esp voltage supply value
+#define PH_PIN 35		//the e#define samplingInterval 20
 
 float voltage, pHValue;
-float pHmin, pHmax;
-int TDSmin, TDSmax;
+double pHmin,pHmax;
+int TDSmin,TDSmax;
 //Relay
-const int RELAY_ph2 = 19;
+const int RELAY_ph2 = 19;  
 const int RELAY_h2o = 18;
 // const int RELAY_dd2 = 5;
 const int RELAY_dd1 = 17;
@@ -55,15 +55,13 @@ void setup() {
   //PUMP
   pinMode(RELAY_ph2, OUTPUT);
   pinMode(RELAY_h2o, OUTPUT);
-  // pinMode(RELAY_dd2, OUTPUT);
   pinMode(RELAY_dd1, OUTPUT);
   pinMode(RELAY_ph1, OUTPUT);
   digitalWrite(RELAY_ph2, LOW);
   digitalWrite(RELAY_h2o, HIGH);
-  // digitalWrite(RELAY_dd2, HIGH);
   digitalWrite(RELAY_dd1, LOW);
   digitalWrite(RELAY_ph1, LOW);
-  // pinMode(LED,OUTPUT);
+
   //TDS
   pinMode(TdsSensorPin, INPUT);
   // Initialize serial communication
@@ -82,8 +80,8 @@ void setup() {
   tds.begin();
   //DS18B20 temperature sensor
   sensors.begin();
-  EEPROM.begin(32);  //needed to permit storage of calibration value in eeprom
-  ph.begin();
+  EEPROM.begin(32);//needed to permit storage of calibration value in eeprom
+	ph.begin();
 
   timer.setInterval(1000L, sendTDS);
   timer.setInterval(1000L, sendDS18);
@@ -98,7 +96,35 @@ int copyIndex = 0;
 int count = 1;
 float averageVoltage = 0;
 float tdsValue = 0;
-
+// float temperature = 25;  // current temperature for compensation
+BLYNK_WRITE(V2)
+{
+  double pHminb = param.asDouble(); // assigning incoming value from pin V1 to a variable
+  Serial.print("V2 Slider value is: ");
+  Serial.println(pHminb);
+  pHmin = pHminb;
+}
+BLYNK_WRITE(V3)
+{
+  double pHmaxb = param.asDouble(); // assigning incoming value from pin V1 to a variable
+  Serial.print("V3 Slider value is: ");
+  Serial.println(pHmaxb);
+  pHmax = pHmaxb;
+}
+BLYNK_WRITE(V5)
+{
+  int TDSminb = param.asInt(); // assigning incoming value from pin V1 to a variable
+  Serial.print("V5 Slider value is: ");
+  Serial.println(TDSminb);
+  TDSmin = TDSminb;
+}
+BLYNK_WRITE(V6)
+{
+  int TDSmaxb = param.asInt(); // assigning incoming value from pin V1 to a variable
+  Serial.print("V6 Slider value is: ");
+  Serial.println(TDSmaxb);
+  TDSmax = TDSmaxb;
+}
 //TDS
 // median filtering algorithm
 int getMedianNum(int bArray[], int iFilterLen) {
@@ -122,49 +148,7 @@ int getMedianNum(int bArray[], int iFilterLen) {
   }
   return bTemp;
 }
-//pH
-double avergearray(int* arr, int number) {
-  int i;
-  int max, min;
-  double avg;
-  long amount = 0;
-  if (number <= 0) {
-    Serial.println("Error number for the array to avraging!/n");
-    return 0;
-  }
-  if (number < 5) {  //less than 5, calculated directly statistics
-    for (i = 0; i < number; i++) {
-      amount += arr[i];
-    }
-    avg = amount / number;
-    return avg;
-  } else {
-    if (arr[0] < arr[1]) {
-      min = arr[0];
-      max = arr[1];
-    } else {
-      min = arr[1];
-      max = arr[0];
-    }
-    for (i = 2; i < number; i++) {
-      if (arr[i] < min) {
-        amount += min;  //arr<min
-        min = arr[i];
-      } else {
-        if (arr[i] > max) {
-          amount += max;  //arr>max
-          max = arr[i];
-        } else {
-          amount += arr[i];  //min<=arr<=max
-        }
-      }  //if
-    }    //for
-    avg = (double)amount / (number - 2);
-  }  //if
-  return avg;
-}
 
-//sendTemperature
 void sendDS18() {
   // Read DS18B20 temperature sensor value
   sensors.requestTemperatures();
@@ -173,14 +157,8 @@ void sendDS18() {
   // Print sensor values to serial monitor
   Serial.print("Water Temperature: ");
   Serial.println(tempC);
-
-  // Send sensor values to Blynk
-  if (tempC > 0) {
-    Blynk.virtualWrite(V4, tempC);
-  }
 }
 
-//sendTDS
 void sendTDS() {
   // Read TDS sensor value
   static unsigned long analogSampleTimepoint = millis();
@@ -205,105 +183,103 @@ void sendTDS() {
 
     Serial.print("TDS Value:");
     Serial.print(tdsValue, 0);
-    Serial.println("ppm");
-    if (tempC > 0) {
-      Blynk.virtualWrite(V0, tdsValue);
-    }
+    Serial.println("ppm");    
   }
 }
 
-//sendpH
 void sendpH() {
-  count++;
+  float temperature = 25;
   static unsigned long timepoint = millis();
-  if (millis() - timepoint > 1000U)  //time interval: 1s
-  {
-    timepoint = millis();
-    //voltage = rawPinValue / esp32ADC * esp32Vin
-    voltage = analogRead(PH_PIN) / ESPADC * ESPVOLTAGE;  // read the voltage
-    // Serial.print("voltage:");
-    // Serial.println(voltage, 4);
-    pHValue = ph.readPH(voltage, temperature);  // convert voltage to pH with temperature compensation
-    Serial.print("pH:");
-    Serial.println(pHValue, 4);
-  }
-  ph.calibration(voltage, tempC);  // calibration process by Serail CMD
-  // Send sensor values to Blynk
-  if (tempC > 0) {
-    Blynk.virtualWrite(V1, pHValue);
-  }
+	if (millis() - timepoint > 1000U) //time interval: 1s
+	{
+		timepoint = millis();
+		//voltage = rawPinValue / esp32ADC * esp32Vin
+		voltage = analogRead(PH_PIN) / ESPADC * ESPVOLTAGE; // read the voltage
+		pHValue = ph.readPH(voltage, tempC); // convert voltage to pH with temperature compensation
+		Serial.print("pH:");
+		Serial.println(pHValue, 4);
+	}
+	ph.calibration(voltage, temperature); // calibration process by Serail CMD
+
 }
 
-void displayValue() {
-  if (tempC > 0) {
-    lcd.setCursor(0, 0);
-    lcd.print("TDS: ");
-    lcd.print(tdsValue, 0, " PPM");
+void displayValue(){
+  if(tempC>0 && tdsValue >0 && pHValue>0){
+  lcd.setCursor(0, 0);
+  lcd.print("TDS: ");
+  lcd.print(tdsValue, 0);
+  lcd.print(" PPM");
+  
+  lcd.setCursor(0, 2);
+  lcd.print("Temp: ");
+  lcd.print(tempC, 0);
+  lcd.print(" C");
 
-    lcd.setCursor(0, 2);
-    lcd.print("Temp: ");
-    lcd.print(tempC, 0, " C");
-    // lcd.print(" C");}
-
-    lcd.setCursor(0, 1);
-    lcd.print("pH: ");
-    lcd.print(pHValue);
-  }
+  lcd.setCursor(0, 1);
+  lcd.print("pH: ");
+  lcd.print(pHValue);
 }
+}
+
 
 void Pump_pH() {
-  if (pHValue < 6) {
-    digitalWrite(RELAY_ph2, HIGH);
-    delay(8000);
-    digitalWrite(RELAY_ph2, LOW);
-  } else if (pHValue > 6.8) {
-    digitalWrite(RELAY_ph1, HIGH);
-    delay(8000);
-    digitalWrite(RELAY_ph1, LOW);
-  } else {
+  if(pHValue< pHmin ){
+  digitalWrite(RELAY_ph2, HIGH);
+  delay(6000);
+  digitalWrite(RELAY_ph2, LOW);
+  }
+  else if(pHValue >pHmax){
+  digitalWrite(RELAY_ph1, HIGH);
+  delay(4000);
+  digitalWrite(RELAY_ph1, LOW);
+  }
+  else{
     digitalWrite(RELAY_ph2, LOW);
     digitalWrite(RELAY_ph1, LOW);
   }
 }
-
 void Pump_H2o() {
   digitalWrite(RELAY_h2o, HIGH);
-  delay(8000);
+  delay(6000);
   digitalWrite(RELAY_h2o, LOW);
 }
-
 void Pump_TDS() {
-  if (tdsValue < 800) {
-    digitalWrite(RELAY_dd1, HIGH);
-    delay(8000);
-    digitalWrite(RELAY_dd1, LOW);
-  } else if (tdsValue > 1000) {
-    digitalWrite(RELAY_ph2, HIGH);
-    delay(8000);
-    digitalWrite(RELAY_ph2, LOW);
-  } else {
+  if(tdsValue<TDSmin ){
+  digitalWrite(RELAY_dd1, HIGH);
+  delay(4000);
+  digitalWrite(RELAY_dd1, LOW);
+  }
+  else if(tdsValue >TDSmax){
+  digitalWrite(RELAY_ph2, HIGH);
+  delay(6000);
+  digitalWrite(RELAY_ph2, LOW);
+  }
+  else{
     digitalWrite(RELAY_dd1, LOW);
     digitalWrite(RELAY_ph2, LOW);
   }
 }
 
 void loop() {
+  
   Blynk.run();
   timer.run();
-  pHmin = Blynk.virtualRead(V2);
-  pHmax = Blynk.virtualRead(V3);
-  TDSmin = Blynk.virtualRead(V5);
-  TDSmax = Blynk.virtualRead(V6);
 
-  Pump_H2o();
-  sendDS18();
-  displayValue();
-  if (count % 10 == 0) {
+  if(count % 5 == 0){
     Pump_H2o();
   }
-  if (count % 60 == 0) {
+  if(count % 60 == 0){
     Pump_pH();
     Pump_TDS();
-    count = 1;
+    count=1;
   }
+  if(tempC>0 && tdsValue>0&& pHValue>0){
+    Blynk.virtualWrite(V4, tempC);
+    Blynk.virtualWrite(V0, tdsValue);
+    Blynk.virtualWrite(V1, pHValue);
+    }
+  count ++;
 }
+
+
+
