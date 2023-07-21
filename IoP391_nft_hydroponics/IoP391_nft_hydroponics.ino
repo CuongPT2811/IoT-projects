@@ -13,8 +13,8 @@
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-const char* ssid = "";
-const char* password = "";
+const char* ssid = "cuong";
+const char* password = "12345678";
 //TDS
 #define TdsSensorPin 36
 #define VREF 3.5  // analog reference voltage(Volt) of the ADC
@@ -38,12 +38,14 @@ DFRobot_ESP_PH ph;
 #define ESPVOLTAGE 3300 //the esp voltage supply value
 #define PH_PIN 35		//the e#define samplingInterval 20
 
-float voltage, pHValue;
-double pHmin,pHmax;
-int TDSmin,TDSmax;
+float voltage, pHValue,pHValue1;
+double pHmin = 6,pHmax=6.8;
+int TDSmin = 800,TDSmax= 1000;
+float pHtemp = 0,pHtemp1 = 0;
 //Relay
 const int RELAY_ph2 = 19;  
 const int RELAY_h2o = 18;
+// const int RELAY_dd2 = 5;
 const int RELAY_dd1 = 17;
 const int RELAY_ph1 = 16;
 
@@ -61,17 +63,8 @@ void setup() {
   digitalWrite(RELAY_dd1, LOW);
   digitalWrite(RELAY_ph1, LOW);
 
-  //TDS sensor
-  tds.begin();
+  //TDS
   pinMode(TdsSensorPin, INPUT);
-
-  //DS18B20 temperature sensor
-  sensors.begin();
-
-  //pH sensor 
-  EEPROM.begin(32);//needed to permit storage of calibration value in eeprom
-	ph.begin();
-
   // Initialize serial communication
   Serial.begin(115200);
   // Connect to Wi-Fi
@@ -84,12 +77,21 @@ void setup() {
 
   // Initialize Blynk
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, password);
+  //TDS sensor
+  tds.begin();
+  //DS18B20 temperature sensor
+  sensors.begin();
+  EEPROM.begin(32);//needed to permit storage of calibration value in eeprom
+	ph.begin();
 
   timer.setInterval(1000L, sendTDS);
   timer.setInterval(1000L, sendDS18);
   timer.setInterval(1000L, sendpH);
   timer.setInterval(1000L, displayValue);
 }
+
+//
+// sum of sample point
 
 int analogBuffer[SCOUNT];  // store the analog value in the array, read from ADC
 int analogBufferTemp[SCOUNT];
@@ -98,37 +100,35 @@ int copyIndex = 0;
 int count = 1;
 float averageVoltage = 0;
 float tdsValue = 0;
-
-
+// float temperature = 25;  // current temperature for compensation
 BLYNK_WRITE(V2)
 {
-  double pHminb = param.asDouble(); // assigning incoming value from pin V2 to a variable
+  double pHminb = param.asDouble(); // assigning incoming value from pin V1 to a variable
   Serial.print("V2 Slider value is: ");
   Serial.println(pHminb);
   pHmin = pHminb;
 }
 BLYNK_WRITE(V3)
 {
-  double pHmaxb = param.asDouble(); // assigning incoming value from pin V3  to a variable
+  double pHmaxb = param.asDouble(); // assigning incoming value from pin V1 to a variable
   Serial.print("V3 Slider value is: ");
   Serial.println(pHmaxb);
   pHmax = pHmaxb;
 }
 BLYNK_WRITE(V5)
 {
-  int TDSminb = param.asInt(); // assigning incoming value from pin V5 to a variable
+  int TDSminb = param.asInt(); // assigning incoming value from pin V1 to a variable
   Serial.print("V5 Slider value is: ");
   Serial.println(TDSminb);
   TDSmin = TDSminb;
 }
 BLYNK_WRITE(V6)
 {
-  int TDSmaxb = param.asInt(); // assigning incoming value from pin V6 to a variable
+  int TDSmaxb = param.asInt(); // assigning incoming value from pin V1 to a variable
   Serial.print("V6 Slider value is: ");
   Serial.println(TDSmaxb);
   TDSmax = TDSmaxb;
 }
-
 //TDS
 // median filtering algorithm
 int getMedianNum(int bArray[], int iFilterLen) {
@@ -161,11 +161,15 @@ void sendDS18() {
   // Print sensor values to serial monitor
   Serial.print("Water Temperature: ");
   Serial.println(tempC);
+
+  // Send sensor values to Blynk
+  
 }
 
 void sendTDS() {
   // Read TDS sensor value
   static unsigned long analogSampleTimepoint = millis();
+  // int temp=25;
   if (millis() - analogSampleTimepoint > 40U)  //every 40 milliseconds,read the analog value from the ADC
   {
     analogSampleTimepoint = millis();
@@ -186,23 +190,32 @@ void sendTDS() {
 
     Serial.print("TDS Value:");
     Serial.print(tdsValue, 0);
-    Serial.println("ppm");    
+    Serial.println("ppm");
+    
   }
 }
 
 void sendpH() {
   float temperature = 25;
+  
   static unsigned long timepoint = millis();
 	if (millis() - timepoint > 1000U) //time interval: 1s
 	{
 		timepoint = millis();
+		//voltage = rawPinValue / esp32ADC * esp32Vin
 		voltage = analogRead(PH_PIN) / ESPADC * ESPVOLTAGE; // read the voltage
-		pHValue = ph.readPH(voltage, tempC); // convert voltage to pH with temperature compensation
+		// Serial.print("voltage:");
+		// Serial.println(voltage, 4);
+    pHtemp1 = pHtemp;
+    pHtemp = pHValue1;
+		pHValue1 = ph.readPH(voltage, tempC); // convert voltage to pH with temperature compensation 
+    pHValue = (pHtemp1 + pHtemp + pHValue1)/3;
 		Serial.print("pH:");
 		Serial.println(pHValue, 4);
 	}
 	ph.calibration(voltage, temperature); // calibration process by Serail CMD
-
+  // Send sensor values to Blynk
+  
 }
 
 void displayValue(){
@@ -227,7 +240,7 @@ void displayValue(){
 void Pump_pH() {
   if(pHValue< pHmin ){
   digitalWrite(RELAY_ph2, HIGH);
-  delay(6000);
+  delay(15000);
   digitalWrite(RELAY_ph2, LOW);
   }
   else if(pHValue >pHmax){
@@ -242,18 +255,18 @@ void Pump_pH() {
 }
 void Pump_H2o() {
   digitalWrite(RELAY_h2o, HIGH);
-  delay(6000);
+  delay(8000);
   digitalWrite(RELAY_h2o, LOW);
 }
 void Pump_TDS() {
   if(tdsValue<TDSmin ){
   digitalWrite(RELAY_dd1, HIGH);
-  delay(4000);
+  delay(10000);
   digitalWrite(RELAY_dd1, LOW);
   }
   else if(tdsValue >TDSmax){
   digitalWrite(RELAY_ph2, HIGH);
-  delay(6000);
+  delay(15000);
   digitalWrite(RELAY_ph2, LOW);
   }
   else{
@@ -270,7 +283,7 @@ void loop() {
   if(count % 5 == 0){
     Pump_H2o();
   }
-  if(count % 60 == 0){
+  if(count % 20 == 0){
     Pump_pH();
     Pump_TDS();
     count=1;
@@ -282,3 +295,6 @@ void loop() {
     }
   count ++;
 }
+
+
+
